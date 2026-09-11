@@ -1480,6 +1480,16 @@ void loop()
 {
   uint32_t now = millis();
 
+#if defined(DEBUG_LOG)
+  // Heartbeat so RF activity can be confirmed over serial without a bound RX
+  static uint32_t lastHeartbeatMs = 0;
+  if (now - lastHeartbeatMs >= 10000)
+  {
+    lastHeartbeatMs = now;
+    DBGLN("state=%d nonce=%u freq=%d", (int)connectionState, OtaNonce, Radio.currFreq);
+  }
+#endif
+
   HandleUARTout(); // Only used for non-CRSF output
 
   #if defined(USE_BLE_JOYSTICK)
