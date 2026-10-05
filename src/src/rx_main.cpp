@@ -172,6 +172,9 @@ static bool alreadyTLMresp = false;
 
 ///////Variables for Telemetry and Link Quality///////////////
 uint32_t LastValidPacket = 0;           //Time the last valid packet was recv
+#if defined(DEBUG_LOG)
+static volatile uint32_t debugRcFramesReceived = 0;
+#endif
 uint32_t LastSyncPacket = 0;            //Time the last valid packet was recv
 
 static uint32_t SendLinkStatstoFCintervalLastSent;
@@ -900,6 +903,11 @@ static void ICACHE_RAM_ATTR ProcessRfPacket_RC(OTA_Packet_s const * const otaPkt
 
     bool const channelDataComplete = OtaIsChannelDataComplete(ChannelData);
 
+#if defined(DEBUG_LOG)
+    if (channelDataComplete)
+        ++debugRcFramesReceived;
+#endif
+
     // No channels packets to the FC or PWM pins if no model match
     if (connectionHasModelMatch && channelDataComplete)
     {
@@ -1137,7 +1145,6 @@ bool ICACHE_RAM_ATTR ProcessRFPacket(SX12xxDriverCommon::rx_status const status)
 
     doStartTimer = false;
     unsigned long now = millis();
-
     LastValidPacket = now;
 
     Radio.CheckForSecondPacket();
@@ -1270,6 +1277,15 @@ void DataUlReceiveComplete()
 
 static void setupSerial()
 {
+#if defined(PLATFORM_ESP32_S3) && defined(DEBUG_ENABLED) && defined(DEBUG_RX_UART_LOG)
+    // Bench logs on UART0. Keep binary FC output off this text-only port.
+    serialBaud = 460800;
+    Serial.begin(serialBaud, SERIAL_8N1, 44, 43);
+    BackpackOrLogStrm = &Serial;
+    serialIO = new SerialNOOP();
+    return;
+#endif
+
     bool sbusSerialOutput = false;
 	bool sumdSerialOutput = false;
     bool mavlinkSerialOutput = false;
@@ -2006,11 +2022,18 @@ void resetConfigAndReboot()
 
 void setup()
 {
+#if defined(DEBUG_ENABLED) && defined(PLATFORM_ESP32_S3)
+    // Start native USB before hardware/config initialization so early failures are visible.
+    USBSerial.begin(460800);
+    BackpackOrLogStrm = &USBSerial;
+#endif
     if (!options_init())
     {
         // In the failure case we set the logging to the null logger so nothing crashes
         // if it decides to log something
+#if !defined(DEBUG_ENABLED) || !defined(PLATFORM_ESP32_S3)
         BackpackOrLogStrm = new NullStream();
+#endif
 
         // Register the WiFi with the framework
         static device_affinity_t wifi_device[] = {
@@ -2037,8 +2060,12 @@ void setup()
         // pre-initialise serial must be done before anything as some libs write
         // to the serial port and they'll block if the buffer fills
         #if defined(DEBUG_LOG)
+        #if defined(PLATFORM_ESP32_S3)
+        BackpackOrLogStrm = &USBSerial;
+        #else
         Serial.begin(serialBaud);
         BackpackOrLogStrm = &Serial;
+        #endif
         #else
         BackpackOrLogStrm = new NullStream();
         #endif
@@ -2101,6 +2128,31 @@ void loop()
 #endif
 {
     unsigned long now = millis();
+
+#if defined(DEBUG_LOG)
+    // Keep serial output out of the RF ISR and throttle it to once per 10 seconds.
+    static uint32_t lastHeartbeatMs = 0;
+    static uint32_t lastRcFramesReceived = 0;
+    if (now - lastHeartbeatMs >= 10000)
+    {
+        lastHeartbeatMs = now;
+        const uint32_t rcFramesReceived = debugRcFramesReceived;
+        DBGLN("RX state=%d nonce=%u freq=%d LQ=%u RSSI1=-%u RSSI2=-%u SNR=%d modelMatch=%u rcFrames=%u",
+            (int)connectionState, OtaNonce, Radio.currFreq,
+            linkStats.uplink_Link_quality, linkStats.uplink_RSSI_1,
+            linkStats.uplink_RSSI_2, linkStats.uplink_SNR,
+            (unsigned)connectionHasModelMatch, rcFramesReceived - lastRcFramesReceived);
+        if (rcFramesReceived != lastRcFramesReceived && connectionState == connected)
+        {
+            // Latest decoded values in CRSF units; channels can update during this snapshot.
+            DBG("RX channels (CRSF):");
+            for (unsigned channel = 0; channel < 16; ++channel)
+                DBG(" CH%u=%u", channel + 1, (unsigned)ChannelData[channel]);
+            DBGCR;
+        }
+        lastRcFramesReceived = rcFramesReceived;
+    }
+#endif
 
     if (DataUlReceiver.HasFinishedData())
     {

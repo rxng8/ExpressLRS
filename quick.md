@@ -6,7 +6,12 @@ source .venv/bin/activate
 .\.venv\Scripts\Activate.ps1
 ```
 
+```bash
+conda create -n elrs python=3.10
+conda activate elrs
 ```
+
+```bash
 pip install platformio dronecan setuptools empy==3.3.4 pexpect
 ```
 
@@ -17,6 +22,12 @@ pio run --environment Unified_ESP32_900_RX_via_BetaflightPassthrough
 pio run --environment Unified_ESP32_2400_TX_via_UART
 ```
 
+```bash
+pio run --environment Unified_ESP32S3_2400_TX_via_UART
+pio run --environment Unified_ESP32S3_2400_RX_via_UART
+```
+
+
 * Build and Flashing:
 
 ```
@@ -24,6 +35,17 @@ pio run --target upload --environment Unified_ESP32_2400_TX_via_UART --upload-po
 
 pio run --target upload --environment Unified_ESP32_2400_TX_via_UART --upload-port COM15
 ```
+
+```bash
+# Build TX
+pio run --target upload --environment Unified_ESP32S3_2400_TX_via_UART --upload-port /dev/ttyACM0
+# option 2
+
+# Build RX
+pio run --target upload --environment Unified_ESP32S3_2400_RX_via_UART --upload-port /dev/ttyACM0
+# option 1
+```
+
 
 
 * See log:
@@ -35,6 +57,13 @@ pio device monitor --port COM15 --baud 115200
 
 baud: 115200 for boot
 baud: 460800 for normal logging
+
+```bash
+screen /dev/ttyACM0 115200
+
+ls -l /dev/serial/by-id/
+pio device monitor --port /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BH00OO57-if00-port0 --baud 460800
+```
 
 
 add
@@ -62,6 +91,8 @@ build_flags =
 	-include target/Unified_ESP32_TX.h
 	-D VTABLES_IN_FLASH=1
   -D DEBUG_LOG
+	-D DEBUG_TX_FREERUN
+	-D DEBUG_TX_SYNTHETIC_RC
 	-O2
 ```
 
@@ -69,3 +100,8 @@ to [esp32-tx.ini](./src/targets/esp32-tx.ini)
 
 
 to enable debugging
+
+
+* Bind: they use a phrase defined in user-defines.txt or `-DMY_BINDING_PHRASE="your-unique-test-phrase"`
+
+

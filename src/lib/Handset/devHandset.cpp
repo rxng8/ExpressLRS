@@ -37,7 +37,9 @@ static int start()
     if (firmwareOptions.is_airport)
         return DURATION_NEVER;
 #endif
+#if !defined(DEBUG_TX_SYNTHETIC_RC)
     handset->Begin();
+#endif
 #if defined(DEBUG_TX_FREERUN)
     handset->forceConnection();
 #endif
@@ -46,8 +48,13 @@ static int start()
 
 static int timeout()
 {
+#if defined(DEBUG_TX_SYNTHETIC_RC)
+    // Synthetic input must not trigger physical handset auto-detection.
+    return DURATION_NEVER;
+#else
     handset->handleInput();
     return DURATION_IMMEDIATELY;
+#endif
 }
 
 device_t Handset_device = {

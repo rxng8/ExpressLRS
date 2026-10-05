@@ -1483,6 +1483,31 @@ void loop()
 {
   uint32_t now = millis();
 
+#if defined(DEBUG_TX_SYNTHETIC_RC)
+  // Bench input through the normal channel handler; RF encoding remains unchanged.
+  // Refresh faster than the one-second stale-channel timeout.
+  static uint32_t lastSyntheticRcMs = 0;
+  static uint32_t lastSyntheticPhase = UINT32_MAX;
+  if (!firmwareOptions.is_airport && connectionState < MODE_STATES &&
+      now - lastSyntheticRcMs >= 100)
+  {
+    lastSyntheticRcMs = now;
+    const uint32_t phase = (now / 10000) % 2;
+    uint32_t channels[CRSF_NUM_CHANNELS];
+    for (auto &channel : channels)
+      channel = 992; // CRSF center
+    channels[0] = phase ? 1300 : 700;
+    channels[2] = 172; // Throttle low
+    channels[4] = 172; // Arm/AUX1 low
+    handset->RCDataReceived(channels, CRSF_NUM_CHANNELS);
+    if (phase != lastSyntheticPhase)
+    {
+      lastSyntheticPhase = phase;
+      DBGLN("TX synthetic RC: CH1=%u CH2=992 CH3=172 CH4=992 CH5=172", channels[0]);
+    }
+  }
+#endif
+
 #if defined(DEBUG_LOG)
   // Heartbeat so RF activity can be confirmed over serial without a bound RX
   static uint32_t lastHeartbeatMs = 0;
